@@ -3,6 +3,28 @@ provider "azurerm" {
   features {}
 }
 
+#variables
+variable "environment_subnets" {
+    type    = list
+    default = ["public", "application", "data"]
+}
+
+variable "set_password" {
+    default = false
+}
+
+variable "VMsize_map" {
+    type = map
+    default = {
+        "development"  = "Standard_A1_v2"
+        "staging" = "Standard_A2_v2"
+        "production" = "Standard_A4_v2"
+    }
+}
+
+
+#end variables
+
 #create the resource group
 resource "azurerm_resource_group" "rg" {
     name = "ateam-resource-group"
@@ -21,7 +43,7 @@ resource "azurerm_virtual_network" "vnet1" {
 resource "azurerm_subnet" "subnet1" {
     resource_group_name = azurerm_resource_group.rg.name
     virtual_network_name = azurerm_virtual_network.vnet1.name
-    name = "devsubnet"
+    name = var.environment_subnets[0]
     address_prefixes = ["10.0.0.0/24"]
 }
 
@@ -32,6 +54,7 @@ resource "azurerm_public_ip" "pub_ip" {
     resource_group_name = azurerm_resource_group.rg.name
     allocation_method = "Dynamic"
 }
+
 
 resource "azurerm_network_interface" "vmnic" {
     location = "australiaeast"
@@ -48,14 +71,24 @@ resource "azurerm_network_interface" "vmnic" {
 
 ##end creating network interface for the VM
 
+##create a strong password
+resource "random_password" "vmpassword" {
+    length = 16
+    special = true
+}
+
+output "generated_password" {
+    value = random_password.vmpassword.result
+}
+##end creating password
 
 ##create the actual VM
 resource "azurerm_windows_virtual_machine" "devvm" {
     name = "development-vm"
     location = "australiaeast"
-    size = "Standard_A1_v2"
+    size = var.VMsize_map["development"]
     admin_username = "pradeep"
-    admin_password = "kq7UciQluJt%3dtj"
+    admin_password = random_password.vmpassword.result
     resource_group_name = azurerm_resource_group.rg.name
 
     network_interface_ids = [azurerm_network_interface.vmnic.id]
@@ -75,4 +108,10 @@ resource "azurerm_windows_virtual_machine" "devvm" {
 }
 ##end creating VM
 
+#query data for the vm
+data "azurerm_public_ip" "vmpubip" {
+  name                = azurerm_public_ip.pub_ip.name
+  resource_group_name = azurerm_windows_virtual_machine.devvm.resource_group_name
+}
 
+#endquery
